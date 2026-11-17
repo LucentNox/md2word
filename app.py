@@ -15,6 +15,9 @@ st.set_page_config(page_title="數學教材工具箱", page_icon="📐", layout=
 x = sp.symbols("x")
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
+# 欄寬比例：先存成變數（tuple），避免複製時被誤判格式
+EDITOR_RATIO = (2, 1)
+
 DEFAULT_MD = r"""# 一元二次方程式練習
 
 ## 一、基本觀念
@@ -70,10 +73,13 @@ def markdown_to_docx(md_text: str) -> bytes:
 
 
 def safe_filename(name: str, default: str = "document") -> str:
+    """移除檔名中不合法的字元，並補上 .docx 副檔名。"""
     name = (name or "").strip() or default
     for ch in '\\/:*?"<>|':
         name = name.replace(ch, "_")
-    return name if name.lower().endswith(".docx") else f"{name}.docx"
+    if name.lower().endswith(".docx"):
+        return name
+    return name + ".docx"
 
 
 # ============================================================
@@ -83,15 +89,21 @@ def generate_questions(n):
     """先隨機選兩個根，再展開成題目，答案在出題時就已知。"""
     items = []
     for _ in range(n):
-        r1, r2 = random.randint(-9, 9), random.randint(-9, 9)
+        r1 = random.randint(-9, 9)
+        r2 = random.randint(-9, 9)
         expr = sp.expand((x - r1) * (x - r2))
         items.append((sp.latex(expr), sp.latex(sp.factor(expr))))
     return items
 
 
 def build_markdown(items):
-    q = "\n".join(f"{i}. 因式分解 ${e}$" for i, (e, _) in enumerate(items, 1))
-    a = "\n".join(f"{i}. ${f}$" for i, (_, f) in enumerate(items, 1))
+    q_lines = []
+    a_lines = []
+    for i, (e, fct) in enumerate(items, start=1):
+        q_lines.append(f"{i}. 因式分解 ${e}$")
+        a_lines.append(f"{i}. ${fct}$")
+    q = "\n".join(q_lines)
+    a = "\n".join(a_lines)
     return f"# 因式分解練習\n\n{q}\n\n# 參考答案\n\n{a}\n"
 
 
@@ -141,6 +153,7 @@ with tab_quiz:
 
     if "quiz_md" in st.session_state:
         quiz_md = st.session_state.quiz_md
+
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Markdown 原始碼**")
@@ -159,7 +172,7 @@ with tab_quiz:
                     file_name="exam.docx",
                     mime=DOCX_MIME,
                     key="dl_quiz",
-                    use_container_width=True,
+                    width="stretch",
                 )
             except RuntimeError as e:
                 st.error(f"轉檔失敗：{e}")
@@ -167,7 +180,7 @@ with tab_quiz:
             st.button(
                 "✏️ 送到 Markdown 編輯器修改",
                 on_click=send_quiz_to_editor,
-                use_container_width=True,
+                width="stretch",
             )
         st.caption("按下「送到編輯器」後，請點上方「📝 Markdown 轉 Word」分頁繼續編輯。")
 
@@ -198,7 +211,7 @@ with tab_editor:
             height=500,
             label_visibility="collapsed",
         )
-        st.caption("輸入後按 **Ctrl + Enter**（Mac：⌘ + Enter）或點擊輸入框外，預覽即更新。")
+        st.caption("輸入後按 Ctrl + Enter（Mac：⌘ + Enter）或點擊輸入框外，預覽即更新。")
 
     with col_out:
         st.markdown("**預覽區**")
@@ -208,12 +221,10 @@ with tab_editor:
     st.divider()
 
     md_text = st.session_state.editor_md
-    c1, c2 = st.columns([2](2)[1](1))
+    c1, c2 = st.columns(EDITOR_RATIO, vertical_alignment="bottom")
     with c1:
         fname = st.text_input("Word 檔名", value="document")
     with c2:
-        st.write("")  # 對齊按鈕位置
-        st.write("")
         if md_text.strip():
             try:
                 with st.spinner("轉換中…"):
@@ -225,7 +236,7 @@ with tab_editor:
                     mime=DOCX_MIME,
                     key="dl_editor",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 )
             except RuntimeError as e:
                 st.error(f"轉檔失敗：{e}")
